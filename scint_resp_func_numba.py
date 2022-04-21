@@ -1,5 +1,8 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import sys
+sys.path.append("D:\\MPE\\COMPTEL_Simulation_Project\\Werkstudent\\Python_Code/")
+
 import reading_data as rd
 from scipy.optimize import minimize
 from numba import njit,vectorize,prange
@@ -10,7 +13,7 @@ import logging
 numba_logger = logging.getLogger('numba')
 numba_logger.setLevel(logging.WARNING)
 
-p_plots='D:\\COMPTEL_Simulation_Project\\Werkstudent\\Plots/'
+p_plots='D:\\MPE/'
 
 p_NaI=3.67
 
@@ -672,6 +675,9 @@ def lin_int_solver(domain_values,range_values):
 def geomspace(start, stop, num):
     return np.array([ start * (stop/start) ** ( i/ (num-1) ) for i in range(num) ])
 
+def fit_func(a,y1,y2):
+    return np.sum((y1-a*y2)**2)
+
 @njit
 def discrete_delta(domain,value):
     weights=np.zeros(len(domain))
@@ -1269,7 +1275,7 @@ def plot_T():
 
 
 
-p='D:\\COMPTEL_Simulation_Project\\Werkstudent\\Data_from_Simulations\\Thesis_Simulations/'
+p='D:\\MPE\\COMPTEL_Simulation_Project\\Werkstudent\\Data_from_Simulations\\Thesis_Simulations/'
 
 mon_spec=np.array([[ 315954.69789562,  324312.87053643,  332257.29397254,
          338975.252593  ,  344260.57556527,  348327.86191268,
@@ -1405,7 +1411,7 @@ def monochromatic_spectrum():
         n_r, _, _ = plt.hist(E2s_r, bins=Es, label="MEGAlib Simulation D2 Counts",color="C0")
         
         out = calc_cont_spectrum(xs, n) # mon_spec[i,:] # 
-        a=minimize(rd.fit_func,np.amax(n_r)/np.amax(out),(n_r,out)).x #######################################################################
+        a=minimize(fit_func,np.amax(n_r)/np.amax(out),(n_r,out)).x #######################################################################
         
         plt.plot(xs,n*np.sum(out*a)/np.sum(n),lw=2.0,label="D2 Incidence Spectrum",c="C2")
         plt.plot(xs,out*a,lw=2.0,label="D2 Count Spectrum",c="C1")
@@ -1663,4 +1669,3 @@ def testa():
     print(lin_int_solver(Es4,Phi_d_4))
     plt.ylim(0,1)    
 
-#hello there

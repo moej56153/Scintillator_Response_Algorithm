@@ -886,7 +886,7 @@ def main_loop_lin(E):
         
         for loop in range(1,n):
             exp=np.exp(-total*T)
-            exp_d=np.exp(-total_d*T)
+            #exp_d=np.exp(-total_d*T) #################################################
             
             Q[0,loop]=lin_int_solver(Es,
                                      S[0,loop-1,:] * (1-exp) * photoel / total )
@@ -1192,7 +1192,7 @@ def calc_cont_spectrum(x_data,y_data):
     results=np.zeros((2,samples,E_len_total))
     out=np.zeros(len(x_data))
     for i in prange(samples):
-        results[0,i,:], results[1,i,:] = calc_count_spectrum_T(E_samples[i],7.85*p_NaI)##############################################################
+        results[0,i,:], results[1,i,:] = calc_count_spectrum(E_samples[i])##############################################################
         weights[i] = continue_lin(E_samples[i], x_data, y_data)
     for i in prange(len(x_data)):
         for j in range(samples):
@@ -1418,7 +1418,7 @@ def monochromatic_spectrum():
         if i==0:
             plt.legend()
 
-    plt.savefig(p_plots+'monochromatic_final_spectrum_pp_T.pdf',bbox_inches='tight')
+    plt.savefig(p_plots+'monochromatic_final_spectrum_pp.pdf',bbox_inches='tight')
 
 
 ##########################################################################

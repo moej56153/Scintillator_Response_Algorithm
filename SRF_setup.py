@@ -12,7 +12,7 @@ from numba import njit,vectorize,prange
 
 
 
-def create_h5py_dataset(include_simulated_data=False):
+def create_h5py_dataset(include_simulated_data=True):
     with h5py.File("SRF.hdf5","w") as h5:
         
         ## Cross Sections
@@ -26,7 +26,7 @@ def create_h5py_dataset(include_simulated_data=False):
         
         # Klein Nishina Cross Section
         KN = h5.create_group("Cross-Sections/Klein-Nishina")
-        KN.create_dataset("KN_CS",data=calc_total_kn_cs())
+        KN.create_dataset("KN_CS",data=calc_total_kn_cs_gauss())
         KN.attrs.__setitem__("Energies","E1s=np.geomspace(0.001,100,1000) [MeV]")
         KN.attrs.__setitem__("Units","Non-normalized total cross section")
         
@@ -54,7 +54,21 @@ def create_h5py_dataset(include_simulated_data=False):
                 SD.create_dataset("Mono_{E}_Incidence".format(E=int(E*1000)), data=E2s)
                 
             SD.attrs.__setitem__("Units","[MeV]")
-                
+        
+        
+        ## GBM Data
+        # Data Set
+        GBM = h5.create_group("GBM")
+        Mn_d = GBM.create_dataset("FM01_00182_Mn_54",data=read_GBM_file("4096_FM01-00182_Backsub_Mn_54.txt"))
+        Mn_d.attrs.__setitem__("Peak_Energy", 0.83484)
+        Mn_d.attrs.__setitem__("Photopeak_Ratio", 0.153997)
+        Mn_d.attrs.__setitem__("Peak_Sigma", 3.83835679e-02)
+        
+        Na_d = GBM.create_dataset("FM03-00265_Na_22",data=read_GBM_file("4096_FM03-00265_Backsub_Na_22.txt"))
+        Na_d.attrs.__setitem__("Peak_Energy", 0.511)
+        Na_d.attrs.__setitem__("Photopeak_Ratio", 0.207025)
+        Na_d.attrs.__setitem__("Peak_Sigma", 2.44647567e-02)
+
         
         
 
@@ -317,31 +331,30 @@ def klein_nishina_diff_energy_cs(E1,E2):
     P=E2/E1
     return P**2 * (P+1/P-np.sin(theta)**2) * (1/E2**2)
 
-  
+
+points, weights = np.polynomial.legendre.leggauss(100)
+
 @njit
-def calc_total_kn_cs():
+def calc_total_kn_cs_gauss():
     E1s=geomspace(0.001,100,1000)
     outs=np.zeros(len(E1s))
     for i in range(len(E1s)):
         Ec=E1s[i]*((1/( 1+(2*E1s[i]/0.511)) ) )*1.00001
-        E2s=geomspace(Ec,E1s[i],100000)
-        cs=np.zeros(len(E2s))
-        for j in range(len(E2s)):
-            cs[j]=klein_nishina_diff_energy_cs(E1s[i], E2s[j])
-        outs[i]=exp_int_solver(E2s,cs)
-    # plt.plot(E1s,outs)
-    # plt.xscale("log")
-    # plt.yscale("log")
+        
+        #points, weights = np.polynomial.legendre.leggauss(10)
+        
+        B = 1/2 * np.log(E1s[i]/Ec)
+        A = E1s[i] / np.exp(B)
+        
+        y = lambda x: A * np.exp(B*x)
+        
+        cs = np.zeros(len(points))
+        for j,x in enumerate(points):
+            cs[j]=klein_nishina_diff_energy_cs(E1s[i], y(x))
+            
+        outs[i] = np.sum(cs * y(points) * B * weights)
     return outs
 
-@njit
-def exp_int_solver(domain_values,range_values):
-    r= (domain_values[-1] / domain_values[0]) ** (1/(len(domain_values)-1))
-    weights=np.zeros(len(domain_values))
-    f=(r-1)/2
-    weights[:-1]=f*domain_values[:-1]
-    weights[1:]+=f*domain_values[:-1]
-    return np.sum(weights*range_values)
 
 @njit
 def geomspace(start, stop, num):
@@ -427,12 +440,68 @@ def D2_cell_photopeak_ratio(E):
 
 
 
+### GBM Data
+@vectorize
+def FM01_channel_to_energy(c):
+    return (-5.99018 + 0.22921*c + 4.6569E-6*c**2) / 1000
+
+@vectorize
+def FM01_uncertainty(E):
+    return (13.9659 + 0.49129*(E*1000) + -0.00013*(E*1000)**2) / (2*np.sqrt(2*np.log(2))) / 1000
+
+@vectorize
+def FM03_channel_to_energy(c):
+    return (-5.23113 + 0.23068*c + 4.1429E-6*c**2) / 1000
+
+@vectorize
+def FM03_uncertainty(E):
+    return (10.59739 + 0.47665*(E*1000) + -0.00015*(E*1000)**2) / (2*np.sqrt(2*np.log(2))) / 1000
 
 
+def read_GBM_file(filename="4096_FM03-00265_Backsub_Na_22.txt"):
+    data = np.zeros(4100)
+    with open(filename, "r") as file:
+        counter = 0
+        for line in file:
+            data[counter] = float(line.strip())
+            
+            counter += 1
+            
+    return data[4:-1]
 
 
+def calc_photopeak_ratio(filename="4096_FM03-00265_Backsub_Na_22.txt", peak_energy=0.511):
+    x = FM03_channel_to_energy(np.linspace(0,4094,4095)) ####
+    y = read_GBM_file(filename)
+    
+    res = minimize(gauss_fit, [peak_energy, FM03_uncertainty(peak_energy)/3, 100], (x,y)) ####
+    
+    y_f = gauss_sig(x, res.x[0], res.x[1], res.x[2])
+    plt.plot(x,y)
+    plt.plot(x,y_f)
+    
+    print(np.sum(y_f))
+    print(np.sum(y))
+    print(np.sum(y_f)/np.sum(y))
+    
+    return res.x
+    
+    
+    
+@vectorize
+def gauss_sig(x,mean,sigma,amplitude):
+    return amplitude * (2*np.pi)**(-1/2) * sigma**(-1) * np.exp( -(x-mean)**2 / (2*sigma**2) )
 
+def gauss_fit(p,x,y):
+    return np.sum( (gauss_sig(x, p[0], p[1], p[2]) - y)**2 )
 
+def test():
+    channels = np.linspace(0,4094,4095)
+    data = read_GBM_file()
+    
+    Es = FM03_channel_to_energy(channels)
+    
+    plt.plot(Es,data)
 
 
 

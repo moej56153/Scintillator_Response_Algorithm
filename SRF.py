@@ -16,6 +16,16 @@ with h5py.File("SRF.hdf5","r") as h5:
     PPR = np.array(h5.get("COMPTEL/Photopeak Ratio/D2_PPR"))
     Es_PPR = np.geomspace(0.01,100,1000)
     
+    GBM_Mn = np.array(h5.get("GBM/FM01_00182_Mn_54"))
+    GBM_Mn_Peak_Energy = float(h5["GBM/FM01_00182_Mn_54"].attrs["Peak_Energy"])
+    GBM_Mn_Photopeak_Ratio = float(h5["GBM/FM01_00182_Mn_54"].attrs["Photopeak_Ratio"])
+    GBM_Mn_Peak_Peak_Sigma = float(h5["GBM/FM01_00182_Mn_54"].attrs["Peak_Sigma"])
+    
+    GBM_Na = np.array(h5.get("GBM/FM03-00265_Na_22"))
+    GBM_Na_Peak_Energy = float(h5["GBM/FM03-00265_Na_22"].attrs["Peak_Energy"])
+    GBM_Na_Photopeak_Ratio = float(h5["GBM/FM03-00265_Na_22"].attrs["Photopeak_Ratio"])
+    GBM_Na_Peak_Peak_Sigma = float(h5["GBM/FM03-00265_Na_22"].attrs["Peak_Sigma"])
+    
 
 
 ### Data Extraction Functions
@@ -37,8 +47,11 @@ def total_cs(E):
     return 1.*incoh_cs(E) + photoel_cs(E) + pair_cs(E)
 
 
+
 @njit
 def klein_nishina_diff_energy_cs(E1,E2):
+    if E1==0. or E2==0.:
+        return 0.
     theta=np.arccos( 1-0.511*( (E1-E2) / (E1*E2) ) )
     if np.isnan(theta):
         return 0.
@@ -49,13 +62,21 @@ def klein_nishina_diff_energy_cs(E1,E2):
 @njit
 def compton_cs_E1s(E1, E2, incoh, out):
     for i in range(len(E1)):
-        out[i] = klein_nishina_diff_energy_cs(E1[i], E2) / continue_log(E1[i], Es_KN_CS, KN_CS) * incoh[i]
+        t = continue_log(E1[i], Es_KN_CS, KN_CS)
+        if t==0.:
+            out[i] = 0.
+        else:
+            out[i] = klein_nishina_diff_energy_cs(E1[i], E2) / t * incoh[i]
     return out
         
 @njit
 def compton_cs_E2s(E1, E2, incoh, out):
     for i in range(len(E2)):
-        out[i] = klein_nishina_diff_energy_cs(E1, E2[i]) / continue_log(E1, Es_KN_CS, KN_CS) * incoh
+        t = continue_log(E1, Es_KN_CS, KN_CS)
+        if t==0.:
+            out[i] = 0.
+        else:
+            out[i] = klein_nishina_diff_energy_cs(E1, E2[i]) / t * incoh
     return out
 
 @vectorize
@@ -68,7 +89,7 @@ def detector_sig(E): #Standard Deviation of Detector
 @njit
 def continue_log(value,x_data,y_data):
     if value<x_data[0] or value>=x_data[-1]:
-        return 0
+        return 0.
     for i in range(len(x_data)-1):
         if value>=x_data[i] and value<x_data[i+1]:
             if y_data[i]==0. or y_data[i+1]==0.:
@@ -124,10 +145,15 @@ def discrete_delta(domain,value):
 
 @njit
 def gauss_sig(E1,E2):
+    if E2 == 0.:
+        if E1 == 0.:
+            return 1.
+        return 0.
     return (2*np.pi)**(-1/2) * detector_sig(E2)**(-1) * np.exp( -(E1-E2)**2 / (2*detector_sig(E2)**2) )
 
 def fit_func(a,y1,y2):
     return np.sum((y1-a*y2)**2)
+
 
 
 ### Main Algorithm
@@ -272,8 +298,233 @@ def main_loop_lin(E):
     return Q, S, dT, T, P_T, C, Q_d, S_d, Es, Es_d, E_r
 
 
+points, weights = np.polynomial.legendre.leggauss(1500)
+
+
+
+
+
 @njit
-def calc_count_spectrum(E):
+def main_loop_gauss(E, P_T):
+    E_res_out = 1500
+    Es_out = np.linspace(0, E, E_res_out)
+    n = 10
+    max_loop = 10
+    # E_min = 0.001
+    # E_d_up = 0.52
+    T_threshold = 0.001
+    T_trial = 13.
+    T_abort = 15.
+    T_guess_init = 5.
+    T_guess_var = 30.
+    m = 0.5109906
+    
+    flag = False
+    
+    # print("INITIALIZING")
+    # print(E)
+    # print()
+    
+    Es = np.zeros((n,len(points)))
+    Ecs = np.zeros(n)
+    
+    for i in range(n):
+        Ecs[i] = m*E / (m + 2*(i+1)*E) ################### Should I increase this a tiny bit?
+        y = lambda x: (x+1)/2 * (E-Ecs[i]) + Ecs[i]
+        Es[i,:] = y(points)
+        
+    
+    # P_T = continue_log_x(E, Es_PPR, PPR)
+    incoh = incoh_cs(Es)
+    photoel = photoel_cs(Es)
+    pair = pair_cs(Es)
+    total = total_cs(Es)
+    
+    compton_E1s = np.zeros(len(points))
+    compton_E2s = compton_cs_E2s( E , Es[0,:] , incoh_cs(E) , np.zeros(len(points)) )
+    
+    S = np.zeros((2,n,len(points)))
+    Q = np.zeros((2,n))
+    C = np.zeros((2,n))
+    
+    Q[0,0] = photoel_cs(E) / total_cs(E)
+    S[0,0,:] = compton_E2s[:] / total_cs(E)
+    C[0,0] = pair_cs(E) / total_cs(E)
+    
+    
+    
+    calc_delta = pair_cs(E) != 0.
+    
+    Es_d = np.zeros((n-1,len(points)))
+    
+    S_d = np.zeros((2,n-1,len(points)))
+    Q_d = np.zeros((2,n-1))
+
+    
+    if calc_delta:
+        
+        Ecs_d = np.zeros(n-1)
+    
+        for i in range(n-1):
+            Ecs_d[i] = m*m / (m + 2*(i+1)*m) ################### Should I increase this a tiny bit?
+            y_d = lambda x: (x+1)/2 * (m-Ecs_d[i]) + Ecs_d[i]
+            Es_d[i,:] = y_d(points)
+        
+        
+        incoh_d = incoh_cs(Es_d)
+        photoel_d = photoel_cs(Es_d)
+        total_d = total_cs(Es_d)
+        compton_E1s_d = np.zeros(len(points))
+        compton_E2s_d = compton_cs_E2s( m , Es_d[0,:] , incoh_cs(m) , np.zeros(len(points)) )
+    
+    
+    # S_d[0,0,:] = discrete_delta(Es_d, m)
+
+    
+    T=T_trial
+                
+    for iteration in range(max_loop):
+        
+        for loop in range(1,n):
+            exp=np.exp(-total[loop-1,:]*T)
+            #exp_d=np.exp(-total_d*T)
+            
+            Q[0,loop]=np.sum((E-Ecs[loop-1])/2 * weights * 
+                             S[0,loop-1,:] * (1-exp) * photoel[loop-1,:] / total[loop-1,:])
+            
+            Q[1,loop]=(np.sum((E-Ecs[loop-1])/2 * weights * 
+                             S[0,loop-1,:] * (exp) * photoel[loop-1,:])
+                       +np.sum((E-Ecs[loop-1])/2 * weights * 
+                               S[1,loop-1,:] * (1-exp) * photoel[loop-1,:] / total[loop-1,:]))
+            
+            C[0,loop]=np.sum((E-Ecs[loop-1])/2 * weights * 
+                             S[0,loop-1,:] * (1-exp) * pair[loop-1,:] / total[loop-1,:])
+            
+            C[1,loop]=(np.sum((E-Ecs[loop-1])/2 * weights * 
+                             S[0,loop-1,:] * (exp) * pair[loop-1,:])
+                       +np.sum((E-Ecs[loop-1])/2 * weights * 
+                               S[1,loop-1,:] * (1-exp) * pair[loop-1,:] / total[loop-1,:]))
+            
+            for loop2 in range(len(points)):
+                compton_E1s=compton_cs_E1s( Es[loop-1,:], Es[loop,loop2], incoh[loop-1,:], compton_E1s)
+                
+                S[0,loop,loop2]=np.sum((E-Ecs[loop-1])/2 * weights * 
+                                       S[0,loop-1,:] * (1-exp) * compton_E1s / total[loop-1,:])
+                S[1,loop,loop2]=(np.sum((E-Ecs[loop-1])/2 * weights * 
+                                        S[0,loop-1,:] * (exp) * compton_E1s)
+                                 +np.sum((E-Ecs[loop-1])/2 * weights * 
+                                         S[1,loop-1,:] * (1-exp) * compton_E1s / total[loop-1,:]))
+                
+        if calc_delta:
+            exp_0_d=np.exp(-total_cs(m)*T)
+            
+            Q_d[0,0] = (1-exp_0_d) * photoel_cs(m) / total_cs(m)
+            Q_d[1,0] = exp_0_d * photoel_cs(m)
+            
+            
+            S_d[0,0,:] = (1-exp_0_d) * compton_E2s_d[:] / total_cs(m)
+            S_d[1,0,:] = exp_0_d * compton_E2s_d[:]
+            
+            for loop in range(1,n-1):
+                exp_d=np.exp(-total_d[loop-1,:]*T)
+                
+                Q_d[0,loop]=np.sum((m-Ecs_d[loop-1])/2 * weights * 
+                                 S_d[0,loop-1,:] * (1-exp_d) * photoel_d[loop-1,:] / total_d[loop-1,:])
+                
+                Q_d[1,loop]=(np.sum((m-Ecs_d[loop-1])/2 * weights * 
+                                 S_d[0,loop-1,:] * (exp_d) * photoel_d[loop-1,:])
+                           +np.sum((m-Ecs_d[loop-1])/2 * weights * 
+                                   S_d[1,loop-1,:] * (1-exp_d) * photoel_d[loop-1,:] / total_d[loop-1,:]))
+                
+                
+                for loop2 in range(len(points)):
+                    compton_E1s_d=compton_cs_E1s( Es_d[loop-1,:], Es_d[loop,loop2], incoh_d[loop-1,:], compton_E1s_d)
+                    
+                    S_d[0,loop,loop2]=np.sum((m-Ecs_d[loop-1])/2 * weights * 
+                                            S_d[0,loop-1,:] * (1-exp_d) * compton_E1s_d / total_d[loop-1,:])
+                    S_d[1,loop,loop2]=(np.sum((m-Ecs_d[loop-1])/2 * weights * 
+                                            S_d[0,loop-1,:] * (exp_d) * compton_E1s_d)
+                                      +np.sum((m-Ecs_d[loop-1])/2 * weights * 
+                                              S_d[1,loop-1,:] * (1-exp_d) * compton_E1s_d / total_d[loop-1,:]))
+        
+        
+        
+        if not np.sum( Q[1,:] )==0:
+            dT = ( P_T - np.sum(Q[0,:]) - np.sum(C[0,:]) * (np.sum(Q_d[0,:]))**2 ) / ( np.sum(Q[1,:]) + np.sum(C[1,:]) * (np.sum(Q_d[0,:]))**2 + 2 * np.sum(C[0,:]) * np.sum(Q_d[0,:]) * np.sum(Q_d[1,:]) )
+            # print (iteration,T,dT)
+        else:
+            print (iteration,T)
+            print("Uh-oh!")
+            T=T_guess_init+T_guess_var*np.random.random(1)[0]
+            continue
+
+        if abs(dT)<T_threshold:
+            print("SUCCESS!",E)
+            flag=True
+            break
+        elif dT<-T:
+            T/=2
+        else:
+            T+=dT
+    if not flag:
+        print("ABORT!",E)
+        T=T_abort
+        dT=0
+        
+    
+    
+    S_out = np.zeros((2,n,E_res_out))
+    S_d_out = np.zeros((2,n,E_res_out))
+        
+    compton_E1s_out = np.zeros(E_res_out)
+    compton_E2s_out = compton_cs_E2s( E , Es_out , incoh_cs(E) , np.zeros(E_res_out) )
+    
+    S_out[0,0,:] = compton_E2s_out[:] / total_cs(E)
+    
+    for loop in range(1,n):
+        exp=np.exp(-total[loop-1,:]*T)
+        
+        for loop2 in range(E_res_out):
+            compton_E1s_out=compton_cs_E1s( Es[loop-1,:], Es_out[loop2], incoh[loop-1,:], compton_E1s)
+            
+            S_out[0,loop,loop2]=np.sum((E-Ecs[loop-1])/2 * weights * 
+                                       S[0,loop-1,:] * (1-exp) * compton_E1s_out / total[loop-1,:])
+            S_out[1,loop,loop2]=(np.sum((E-Ecs[loop-1])/2 * weights * 
+                                        S[0,loop-1,:] * (exp) * compton_E1s_out)
+                                 +np.sum((E-Ecs[loop-1])/2 * weights * 
+                                         S[1,loop-1,:] * (1-exp) * compton_E1s_out / total[loop-1,:]))
+            
+    if calc_delta:
+        S_d_out[0,0,:] = discrete_delta(Es_out, m)
+        
+        compton_E1s_d_out = np.zeros(E_res_out)
+        compton_E2s_d_out = compton_cs_E2s( m , Es_out , incoh_cs(m) , np.zeros(E_res_out) )
+                
+        exp_0_d=np.exp(-total_cs(m)*T)
+        
+        S_d_out[0,1,:] = (1-exp_0_d) * compton_E2s_d_out[:] / total_cs(m)
+        S_d_out[1,1,:] = exp_0_d * compton_E2s_d_out[:]
+        
+        
+        for loop in range(1,n-1): 
+            exp_d=np.exp(-total_d[loop-1,:]*T)
+            
+            for loop2 in range(E_res_out):
+                compton_E1s_d_out=compton_cs_E1s( Es_d[loop-1,:], Es_out[loop2], incoh_d[loop-1,:], compton_E1s_d)
+                
+                S_d_out[0,loop+1,loop2]=np.sum((m-Ecs_d[loop-1])/2 * weights * 
+                                        S_d[0,loop-1,:] * (1-exp_d) * compton_E1s_d_out / total_d[loop-1,:])
+                S_d_out[1,loop+1,loop2]=(np.sum((m-Ecs_d[loop-1])/2 * weights * 
+                                        S_d[0,loop-1,:] * (exp_d) * compton_E1s_d_out)
+                                  +np.sum((m-Ecs_d[loop-1])/2 * weights * 
+                                          S_d[1,loop-1,:] * (1-exp_d) * compton_E1s_d_out / total_d[loop-1,:]))
+        
+    # print()
+    return Q, S_out, dT, T, C, Q_d, S_d_out, Es_out #, Es_d #, E_r
+
+
+@njit
+def calc_count_spectrum_lin(E):
     Q, S, dT, T, P_T, C, Q_d, S_d, Es, Es_d, E_r = main_loop_lin(E)
     
     n = len(Q[0,:])
@@ -316,6 +567,9 @@ def calc_count_spectrum(E):
             Phi_d_r[:] = np.zeros(E_res3)
             Phi_d_r[i::-1] = Phi_d_2[:i+1]
             Phi_d_3[i] = lin_int_solver(Es3,Phi_d_r*Phi_d_2)
+            
+        # plt.plot(Es3,Phi_d_3)
+        # print(lin_int_solver(Es3,Phi_d_3))
         
         weights = np.ones(E_res3) * h_d
         weights[0] /= 2
@@ -373,6 +627,113 @@ def calc_count_spectrum(E):
     return Es2, Ct
 
 
+@njit
+def calc_count_spectrum_gauss(E, P_T, uncertainty_func):
+    Q, S, dT, T, C, Q_d, S_d, Es = main_loop_gauss(E, P_T)
+    
+    n = len(Q[0,:])
+    
+    E_res = len(Es)
+    h = (Es[-1]-Es[0]) / (E_res-1)
+    E_res_inc = 300 ######################################################################### int( 4*D2_E_sig(E) / h )
+    E_res2 = E_res+E_res_inc
+    Es2 = np.linspace(Es[0], Es[-1]+E_res_inc*h, E_res2)
+    
+    Phi = S[0,n-1,:] + dT*S[1,n-1,:]
+    for i in range(n-1):
+        Phi += (S[0,i,:] + dT*S[1,i,:]) * np.exp( -(T+dT) * total_cs(Es) )
+        
+    Phi_d = S_d[0,n-1,:] + dT*S_d[1,n-1,:]
+    for i in range(n-1):
+        Phi_d += (S_d[0,i,:] + dT*S_d[1,i,:]) * np.exp( -(T+dT) * total_cs(Es) )
+    
+    Es_temp = np.linspace(-h, Es[-1], E_res+1)
+    Phi_temp = np.zeros(E_res+1)
+    Phi_temp[1:] = Phi_d
+        
+    Q_d_s = np.sum( Q_d[0,:] ) + dT*np.sum( Q_d[1,:] )
+    Phi_temp[1] += Q_d_s / h
+    
+    Phi_double = np.zeros(E_res+1)
+    Phi_d_r = np.zeros(E_res+1)
+    for i in range(E_res):
+        Phi_d_r[:] = np.zeros(E_res+1)
+        Phi_d_r[i+1::-1] = Phi_temp[:i+2]
+        Phi_double[i] = lin_int_solver(Es_temp,Phi_d_r*Phi_temp)
+    
+    Phi_d_f = np.zeros(E_res)
+    Phi_d_f[1:] = Phi_double[2:]
+        
+    pps = np.sum( C[0,:] ) + dT*np.sum( C[1,:] )
+    Phi_t = Phi + pps * Phi_d_f
+    
+    e = np.zeros(E_res2)
+    e[:E_res] = Phi_t[::-1]
+    
+    Cc=np.zeros(E_res2)
+    B=np.zeros(E_res2)
+    for i in range(E_res2):
+        for j in range(E_res2):
+            B[j] = uncertainty_func(Es2[i],Es2[j])
+        Cc[i]=lin_int_solver( Es2, B*e )
+    Cp=np.zeros(E_res2)
+    for i in range(E_res2):
+        Cp[i] = uncertainty_func(Es2[i], E) * P_T
+    Ct=Cc+Cp
+    Ct/=lin_int_solver(Es2,Ct)
+    return Es2, Ct
+        
+def testa():
+    Lin_x, Lin_y = calc_count_spectrum_lin(3)
+    Ga_x, Ga_y = calc_count_spectrum_gauss(3, continue_log_x(3, Es_PPR, PPR), gauss_sig)
+    plt.plot(Lin_x, Lin_y)
+    plt.plot(Ga_x, Ga_y)
+
+
+def main_test_psi_i():
+    E_samples=[5]
+    
+    for i,E in enumerate(E_samples):
+        Q, S, dT, T, P_T, C, Q_d, S_d, Es, Es_d, E_r = main_loop_lin(E)
+        pps = np.sum( C[0,:] ) + dT*np.sum( C[1,:] )
+        print(pps)
+        for loop in range(len(Q[0,:])):
+            Psi=S[0,loop,:]+dT*S[1,loop,:]
+            if loop==9:
+                plt.plot(Es,Psi,label=str(loop)+" L")
+            
+            
+    for i,E in enumerate(E_samples):
+        Q, S, dT, T, C, Q_d, S_d, Es = main_loop_gauss(E, continue_log_x(E, Es_PPR, PPR))
+        pps = np.sum( C[0,:] ) + dT*np.sum( C[1,:] )
+        print(pps)
+        for loop in range(len(Q[0,:])):
+            Psi=S[0,loop,:]+dT*S[1,loop,:]
+            if loop==9:
+                plt.plot(Es,Psi,label=str(loop)+" G")
+    
+    # for i,E in enumerate(E_samples):
+    #     Q, S, dT, T, P_T, C, Q_d, S_d, Es, Es_d, E_r = main_loop_lin(E)
+    #     for loop in range(len(Q[0,:])):
+    #         Psi=S_d[0,loop,:]+dT*S_d[1,loop,:]
+    #         if loop==1:
+    #             plt.plot(Es_d,Psi,label=str(loop)+" L")
+            
+            
+    # for i,E in enumerate(E_samples):
+    #     Q, S, dT, T, P_T, C, Q_d, S_d, Es = main_loop_gauss(E)
+    #     for loop in range(len(Q[0,:])):
+    #         Psi=S_d[0,loop,:]+dT*S_d[1,loop,:]
+    #         if loop==1:
+    #             plt.plot(Es,Psi,label=str(loop)+" G")
+    plt.legend()
+    #plt.ylim(0,5)
+    #plt.xscale("log")
+    #plt.yscale("log")
+    plt.ylabel("$\Psi$(i,E)")
+    plt.xlabel("Energy [MeV]")
+    #plt.savefig(p_plots+'Psi_i_15MeV.pdf',bbox_inches='tight')
+
 @njit(parallel=True)
 def calc_cont_spectrum(x_data,y_data):
     E_min=0.5
@@ -383,7 +744,7 @@ def calc_cont_spectrum(x_data,y_data):
     results=np.zeros((2,samples,E_len_total))
     out=np.zeros(len(x_data))
     for i in prange(samples):
-        results[0,i,:], results[1,i,:] = calc_count_spectrum(E_samples[i])##############################################################
+        results[0,i,:], results[1,i,:] = calc_count_spectrum_lin(E_samples[i])##############################################################
         weights[i] = continue_lin(E_samples[i], x_data, y_data)
     for i in prange(len(x_data)):
         for j in range(samples):
@@ -436,8 +797,46 @@ def monochromatic_spectrum():
     plt.savefig('monochromatic_final_spectrum_pp.pdf',bbox_inches='tight')
 
 
+@vectorize
+def FM01_channel_to_energy(c):
+    return (-5.99018 + 0.22921*c + 4.6569E-6*c**2) / 1000
+
+@vectorize
+def FM01_uncertainty(E):
+    return (13.9659 + 0.49129*(E*1000) + -0.00013*(E*1000)**2) / (2*np.sqrt(2*np.log(2))) / 1000
+
+@vectorize
+def FM03_channel_to_energy(c):
+    return (-5.23113 + 0.23068*c + 4.1429E-6*c**2) / 1000
+
+@vectorize
+def FM03_uncertainty(E):
+    return (10.59739 + 0.47665*(E*1000) + -0.00015*(E*1000)**2) / (2*np.sqrt(2*np.log(2))) / 1000
 
 
+def amplitude_fitter(a,y1,y2):
+    return np.sum((y1-a*y2)**2)
+    
+
+def GBM_data():
+    fig=plt.figure(figsize=(8,12))
+    grid=plt.GridSpec(2, 1,hspace=0.2,wspace=0.2)
+    
+    pa=fig.add_subplot(grid[:,:])
+    pa.spines['top'].set_color('none')
+    pa.spines['bottom'].set_color('none')
+    pa.spines['left'].set_color('none')
+    pa.spines['right'].set_color('none')
+    plt.tick_params(axis='both', which='both', bottom=False, top=False, labelbottom=False, right=False, left=False, labelleft=False)
+    pa.set_xlabel("Energy [MeV]",labelpad=30)
+    pa.set_ylabel("Counts [arb. units]",labelpad=30)
+    
+    Mn_x, Mn_y = calc_count_spectrum_gauss(GBM_Mn_Peak_Energy, GBM_Mn_Photopeak_Ratio, FM01_uncertainty)
+    
+    Mn_plot = fig.add_subplot(grid[0,0])
+    
+    
+    Na_x, Na_y = calc_count_spectrum_gauss(GBM_Na_Peak_Energy, GBM_Na_Photopeak_Ratio, FM03_uncertainty)
 
 
 

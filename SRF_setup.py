@@ -504,7 +504,21 @@ def test():
     plt.plot(Es,data)
 
 
-
+def test_back_sub():
+    pure_data = "4096_FM01-00182_Mn_54.txt"
+    pure_data_t = 43167.743
+    backsub_data = "4096_FM01-00182_Backsub_Mn_54.txt"
+    backsub_data_t = 43167.743
+    background = "4096_FM01-00166_Background.txt"
+    background_t = 3598.163
+    
+    x = FM01_channel_to_energy(np.linspace(0,4094,4095))
+    #plt.plot(x, read_GBM_file(pure_data)-read_GBM_file(background)*pure_data_t/background_t)
+    # plt.plot(x, read_GBM_file(pure_data))
+    # plt.plot(x, read_GBM_file(background))
+    plt.plot(x, read_GBM_file(backsub_data))
+    #plt.yscale("log")
+    plt.ylim(0,4500)
 
 
 

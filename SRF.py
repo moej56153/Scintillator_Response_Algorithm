@@ -684,9 +684,11 @@ def calc_count_spectrum_gauss(E, P_T, uncertainty_func):
     return Es2, Ct
         
 def testa():
-    Lin_x, Lin_y = calc_count_spectrum_lin(3)
-    Ga_x, Ga_y = calc_count_spectrum_gauss(3, continue_log_x(3, Es_PPR, PPR), gauss_sig)
-    plt.plot(Lin_x, Lin_y)
+    E = 0.8
+    P_T = 0.2
+    #Lin_x, Lin_y = calc_count_spectrum_lin(E)
+    Ga_x, Ga_y = calc_count_spectrum_gauss(E, P_T, gauss_FM01_adj)
+    #plt.plot(Lin_x, Lin_y)
     plt.plot(Ga_x, Ga_y)
 
 
@@ -806,6 +808,27 @@ def FM01_uncertainty(E):
     return (13.9659 + 0.49129*(E*1000) + -0.00013*(E*1000)**2) / (2*np.sqrt(2*np.log(2))) / 1000
 
 @vectorize
+def FM01_uncertainty_adj(E):
+    return (13.9659 + 0.49129*(E*1000) + -0.00013*(E*1000)**2) / (2*np.sqrt(2*np.log(2))) / 1000 * GBM_Mn_Peak_Peak_Sigma / FM01_uncertainty(GBM_Mn_Peak_Energy)
+
+@njit
+def gauss_FM01(E1,E2):
+    if E2 == 0.:
+        if E1 == 0.:
+            return 1.
+        return 0.
+    return (2*np.pi)**(-1/2) * FM01_uncertainty(E2)**(-1) * np.exp( -(E1-E2)**2 / (2*FM01_uncertainty(E2)**2) )
+
+@njit
+def gauss_FM01_adj(E1,E2):
+    if E2 == 0.:
+        if E1 == 0.:
+            return 1.
+        return 0.
+    return (2*np.pi)**(-1/2) * FM01_uncertainty_adj(E2)**(-1) * np.exp( -(E1-E2)**2 / (2*FM01_uncertainty_adj(E2)**2) )
+
+
+@vectorize
 def FM03_channel_to_energy(c):
     return (-5.23113 + 0.23068*c + 4.1429E-6*c**2) / 1000
 
@@ -813,12 +836,42 @@ def FM03_channel_to_energy(c):
 def FM03_uncertainty(E):
     return (10.59739 + 0.47665*(E*1000) + -0.00015*(E*1000)**2) / (2*np.sqrt(2*np.log(2))) / 1000
 
+@vectorize
+def FM03_uncertainty_adj(E):
+    return (10.59739 + 0.47665*(E*1000) + -0.00015*(E*1000)**2) / (2*np.sqrt(2*np.log(2))) / 1000 * GBM_Na_Peak_Peak_Sigma / FM03_uncertainty(GBM_Na_Peak_Energy)
+
+@njit
+def gauss_FM03(E1,E2):
+    if E2 == 0.:
+        if E1 == 0.:
+            return 1.
+        return 0.
+    return (2*np.pi)**(-1/2) * FM03_uncertainty(E2)**(-1) * np.exp( -(E1-E2)**2 / (2*FM03_uncertainty(E2)**2) )
+
+@njit
+def gauss_FM03_adj(E1,E2):
+    if E2 == 0.:
+        if E1 == 0.:
+            return 1.
+        return 0.
+    return (2*np.pi)**(-1/2) * FM03_uncertainty_adj(E2)**(-1) * np.exp( -(E1-E2)**2 / (2*FM03_uncertainty_adj(E2)**2) )
 
 def amplitude_fitter(a,y1,y2):
     return np.sum((y1-a*y2)**2)
+
+def amplitude_fitter2(a,y0,y1,y2):
+    return np.sum((y0-a[0]*y1-a[1]*y2)**2)
     
 
+
+PT_8 = 0.25
+PT_5 = 0.30
+PT_2 = 0.8
+
 def GBM_data():
+    m = 0.5109906
+    E2 = lambda E1, theta: 1 / ( (1-np.cos(theta))/m + 1/E1)
+        
     fig=plt.figure(figsize=(8,12))
     grid=plt.GridSpec(2, 1,hspace=0.2,wspace=0.2)
     
@@ -829,14 +882,156 @@ def GBM_data():
     pa.spines['right'].set_color('none')
     plt.tick_params(axis='both', which='both', bottom=False, top=False, labelbottom=False, right=False, left=False, labelleft=False)
     pa.set_xlabel("Energy [MeV]",labelpad=30)
-    pa.set_ylabel("Counts [arb. units]",labelpad=30)
+    pa.set_ylabel("Counts [arb. units]",labelpad=40)
     
-    Mn_x, Mn_y = calc_count_spectrum_gauss(GBM_Mn_Peak_Energy, GBM_Mn_Photopeak_Ratio, FM01_uncertainty)
+    # Mn_x, Mn_y = calc_count_spectrum_gauss(GBM_Mn_Peak_Energy, GBM_Mn_Photopeak_Ratio, gauss_FM01)
+    Mn_x2, Mn_y2 = calc_count_spectrum_gauss(GBM_Mn_Peak_Energy, GBM_Mn_Photopeak_Ratio, gauss_FM01_adj)
+    
+    
+    
+    GBM_x1 = FM01_channel_to_energy(np.linspace(0,4094,4095))
+    # GBM_x1_bins = FM01_channel_to_energy(np.linspace(0,4095,4096)-0.5)
+        
+    # Mn_y_a = np.zeros(len(GBM_x1))
+    Mn_y2_a = np.zeros(len(GBM_x1))
+    
+    for i in range(len(GBM_x1)):
+        # Mn_y_a[i] = continue_lin(GBM_x1[i], Mn_x, Mn_y)
+        Mn_y2_a[i] = continue_lin(GBM_x1[i], Mn_x2, Mn_y2)
+    
+    # Mn_a1 = minimize(amplitude_fitter,100,(GBM_Mn,Mn_y_a)).x[0]
+    Mn_a2 = minimize(amplitude_fitter,100,(GBM_Mn,Mn_y2_a)).x[0]
+    
+    
+    
+    
+    
+    # Na_x, Na_y = calc_count_spectrum_gauss(GBM_Na_Peak_Energy, GBM_Na_Photopeak_Ratio, gauss_FM03)
+    Na_x2, Na_y2 = calc_count_spectrum_gauss(GBM_Na_Peak_Energy, GBM_Na_Photopeak_Ratio, gauss_FM03_adj)
+    
+    GBM_x2 = FM03_channel_to_energy(np.linspace(0,4094,4095))
+    # GBM_x2_bins = FM03_channel_to_energy(np.linspace(0,4095,4096)-0.5)
+    
+    Na_y_a = np.zeros(len(GBM_x2))
+    Na_y2_a = np.zeros(len(GBM_x2))
+    
+    for i in range(len(GBM_x1)):
+        # Na_y_a[i] = continue_lin(GBM_x2[i], Na_x, Na_y)
+        Na_y2_a[i] = continue_lin(GBM_x2[i], Na_x2, Na_y2)
+    
+    # Na_a1 = minimize(amplitude_fitter,100,(GBM_Na,Na_y_a)).x[0]
+    Na_a2 = minimize(amplitude_fitter,100,(GBM_Na,Na_y2_a)).x[0]
+    
+    
     
     Mn_plot = fig.add_subplot(grid[0,0])
     
+    w = (GBM_x1[-1]-GBM_x1[0])/(len(GBM_x1)-3)
+    plt.bar(GBM_x1, GBM_Mn, width = w, label="GBM Data")
+    # plt.plot(Mn_x, Mn_y*Mn_a1,color="C1",label="Analytical Computation")
+    plt.plot(Mn_x2, Mn_y2*Mn_a2,color="C2",label="Analytical Computation: Adjusted Uncertainty")
+    plt.title("Mn 54 Source")
     
-    Na_x, Na_y = calc_count_spectrum_gauss(GBM_Na_Peak_Energy, GBM_Na_Photopeak_Ratio, FM03_uncertainty)
+    plt.legend()
+    
+    
+    Na_plot = fig.add_subplot(grid[1,0])
+    
+    w = (GBM_x2[-1]-GBM_x2[0])/(len(GBM_x2)-3)
+    plt.bar(GBM_x2, GBM_Na, width = w, label="GBM Data")
+    # plt.plot(Na_x, Na_y*Na_a1,color="C1",label="Analytical Computation")
+    plt.plot(Na_x2, Na_y2*Na_a2,color="C2",label="Analytical Computation: Adjusted Uncertainty")
+    plt.title("Na 22 Source")
+    
+    #plt.legend()
+    
+    
+    plt.savefig('SRF_GBM_Data.pdf',bbox_inches='tight')
 
 
 
+def GBM_data2():
+    m = 0.5109906
+    E2 = lambda E1, theta: 1 / ( (1-np.cos(theta))/m + 1/E1)
+    
+    
+    fig=plt.figure(figsize=(8,12))
+    grid=plt.GridSpec(2, 1,hspace=0.2,wspace=0.2)
+    
+    pa=fig.add_subplot(grid[:,:])
+    pa.spines['top'].set_color('none')
+    pa.spines['bottom'].set_color('none')
+    pa.spines['left'].set_color('none')
+    pa.spines['right'].set_color('none')
+    plt.tick_params(axis='both', which='both', bottom=False, top=False, labelbottom=False, right=False, left=False, labelleft=False)
+    pa.set_xlabel("Energy [MeV]",labelpad=30)
+    pa.set_ylabel("Counts [arb. units]",labelpad=40)
+    
+    Mn_x1, Mn_y1 = calc_count_spectrum_gauss(GBM_Mn_Peak_Energy, PT_8, gauss_FM01_adj)
+    Mn_x2, Mn_y2 = calc_count_spectrum_gauss(E2(GBM_Mn_Peak_Energy,180*np.pi/180), PT_2, gauss_FM01_adj)
+    
+    
+    
+    GBM_x1 = FM01_channel_to_energy(np.linspace(0,4094,4095))
+        
+    Mn_y1_a = np.zeros(len(GBM_x1))
+    Mn_y2_a = np.zeros(len(GBM_x1))
+
+    
+    for i in range(len(GBM_x1)):
+        Mn_y1_a[i] = continue_lin(GBM_x1[i], Mn_x1, Mn_y1)
+        Mn_y2_a[i] = continue_lin(GBM_x1[i], Mn_x2, Mn_y2)
+
+    
+    # Mn_a1 = minimize(amplitude_fitter,100,(GBM_Mn,Mn_y_a)).x[0]
+    Mn_a = minimize(amplitude_fitter2, [1000,100], (GBM_Mn, Mn_y1_a, Mn_y2_a)).x
+        
+    
+    
+    
+    
+    Na_x1, Na_y1 = calc_count_spectrum_gauss(GBM_Na_Peak_Energy, PT_5, gauss_FM03_adj)
+    Na_x2, Na_y2 = calc_count_spectrum_gauss(E2(GBM_Na_Peak_Energy,180*np.pi/180), PT_2, gauss_FM03_adj)
+    
+    GBM_x2 = FM03_channel_to_energy(np.linspace(0,4094,4095))
+    # GBM_x2_bins = FM03_channel_to_energy(np.linspace(0,4095,4096)-0.5)
+    
+    Na_y1_a = np.zeros(len(GBM_x2))
+    Na_y2_a = np.zeros(len(GBM_x2))
+    
+    for i in range(len(GBM_x1)):
+        Na_y1_a[i] = continue_lin(GBM_x2[i], Na_x1, Na_y1)
+        Na_y2_a[i] = continue_lin(GBM_x2[i], Na_x2, Na_y2)
+    
+    # Na_a1 = minimize(amplitude_fitter,100,(GBM_Na,Na_y_a)).x[0]
+    Na_a = minimize(amplitude_fitter2, [1000,100], (GBM_Na, Na_y1_a, Na_y2_a)).x
+    
+    
+    
+    Mn_plot = fig.add_subplot(grid[0,0])
+    
+    w = (GBM_x1[-1]-GBM_x1[0])/(len(GBM_x1)-3)
+    plt.bar(GBM_x1, GBM_Mn, width = w, label="GBM Data")
+    # plt.plot(Mn_x, Mn_y*Mn_a1,color="C1",label="Analytical Computation")
+    plt.plot(GBM_x1, Mn_y1_a*Mn_a[0] + Mn_y2_a*Mn_a[1], color="C1", label="Analytical Computation: Adjusted Uncertainty")
+    Mn_plot.set_ylabel("O={:.2f}, R180={:.2f}".format(Mn_a[0]/np.sum(Mn_a), Mn_a[1]/np.sum(Mn_a)))
+    Mn_plot.yaxis.set_label_position("right")
+    plt.title("Mn 54 Source")
+    
+    plt.legend()
+    
+    
+    Na_plot = fig.add_subplot(grid[1,0])
+    
+    w = (GBM_x2[-1]-GBM_x2[0])/(len(GBM_x2)-3)
+    plt.bar(GBM_x2, GBM_Na, width = w, label="GBM Data")
+    # plt.plot(Na_x, Na_y*Na_a1,color="C1",label="Analytical Computation")
+    plt.plot(GBM_x2, Na_y1_a*Na_a[0] + Na_y2_a*Na_a[1], color="C1",label="Analytical Computation: Adjusted Uncertainty")
+    Na_plot.set_ylabel("O={:.2f}, R180={:.2f}".format(Na_a[0]/np.sum(Na_a), Na_a[1]/np.sum(Na_a)))
+    Na_plot.yaxis.set_label_position("right")
+    plt.title("Na 22 Source")
+    
+    #plt.legend()
+    
+    
+    plt.savefig('SRF_GBM_Data2.pdf',bbox_inches='tight')

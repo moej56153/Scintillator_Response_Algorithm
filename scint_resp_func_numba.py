@@ -322,6 +322,13 @@ def D2_cell_photopeak_ratio(E):
     b=fit_photopeak_param1_1_func1(D,H,NaI_b[0],NaI_b[1],NaI_b[2],NaI_b[3])
     return photopeak_func1(E, a, b)
 
+@njit
+def GBM_cell_photopeak_ratio(E):
+    D,H=12.7,1.27
+    a=fit_photopeak_param1_1_func1(D,H,NaI_a[0],NaI_a[1],NaI_a[2],NaI_a[3])
+    b=fit_photopeak_param1_1_func1(D,H,NaI_b[0],NaI_b[1],NaI_b[2],NaI_b[3])
+    return photopeak_func1(E, a, b)
+
 def plot_photopeak_fitted_fits(data=NaI_photopeak_ratios):
     E=np.linspace(0.25,10,80)
     for geom in range(1,len(NaI_photopeak_ratios)):

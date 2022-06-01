@@ -23,11 +23,7 @@ with h5py.File("SRF.hdf5","r") as h5:
     GBM_Na_Peak_Energy = float(h5["GBM/FM03-00265_Na_22"].attrs["Peak_Energy"])
     GBM_Na_Photopeak_Ratio = float(h5["GBM/FM03-00265_Na_22"].attrs["Photopeak_Ratio"])
     GBM_Na_Peak_Peak_Sigma = float(h5["GBM/FM03-00265_Na_22"].attrs["Peak_Sigma"])
-    
-def test():
-    print("does this work")
 
-test()
 
 ### Data Extraction Functions
 
@@ -1035,4 +1031,4 @@ def GBM_data2():
     #plt.legend()
     
     
-    plt.savefig('SRF_GBM_Data2.pdf',bbox_inches='tight')
+    #plt.savefig('SRF_GBM_Data2.pdf',bbox_inches='tight')

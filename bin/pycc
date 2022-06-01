@@ -1,0 +1,3 @@
+#!/home/moej56153/Scintillator_Response_Algorithm/bin/python3
+from numba.pycc import main
+main()

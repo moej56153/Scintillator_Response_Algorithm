@@ -4,8 +4,6 @@ from scipy.optimize import minimize
 from numba import njit,vectorize,prange
 import h5py
 
-test
-
 
 with h5py.File("SRF.hdf5","r") as h5:
     CS = np.array(h5.get("Cross-Sections/NaI"))
@@ -26,7 +24,10 @@ with h5py.File("SRF.hdf5","r") as h5:
     GBM_Na_Photopeak_Ratio = float(h5["GBM/FM03-00265_Na_22"].attrs["Photopeak_Ratio"])
     GBM_Na_Peak_Peak_Sigma = float(h5["GBM/FM03-00265_Na_22"].attrs["Peak_Sigma"])
     
+def test():
+    print("does this work")
 
+test()
 
 ### Data Extraction Functions
 

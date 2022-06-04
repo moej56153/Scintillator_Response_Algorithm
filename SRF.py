@@ -692,14 +692,14 @@ def testa():
 def main_test_psi_i():
     E_samples=[5]
     
-    for i,E in enumerate(E_samples):
-        Q, S, dT, T, P_T, C, Q_d, S_d, Es, Es_d, E_r = main_loop_lin(E)
-        pps = np.sum( C[0,:] ) + dT*np.sum( C[1,:] )
-        print(pps)
-        for loop in range(len(Q[0,:])):
-            Psi=S[0,loop,:]+dT*S[1,loop,:]
-            if loop==9:
-                plt.plot(Es,Psi,label=str(loop)+" L")
+    # for i,E in enumerate(E_samples):
+    #     Q, S, dT, T, P_T, C, Q_d, S_d, Es, Es_d, E_r = main_loop_lin(E)
+    #     pps = np.sum( C[0,:] ) + dT*np.sum( C[1,:] )
+    #     print(pps)
+    #     for loop in range(len(Q[0,:])):
+    #         Psi=S[0,loop,:]+dT*S[1,loop,:]
+    #         if loop==9:
+    #             plt.plot(Es,Psi,label=str(loop)+" L")
             
             
     for i,E in enumerate(E_samples):

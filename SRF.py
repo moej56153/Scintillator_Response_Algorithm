@@ -920,13 +920,32 @@ def GBM_data():
     Na_a2 = minimize(amplitude_fitter,100,(GBM_Na,Na_y2_a)).x[0]
     
     
+
+    from gbm_drm_gen.drmgen import DRMGen
+    from gbmgeometry.position_interpolator import PositionInterpolator
+    Ein_edges = np.linspace(1,1001,1001)
+    Eout_edges = FM01_channel_to_energy(np.linspace(1,4094,4094))*1000
+    pos = PositionInterpolator(quats = np.array([[0,0,0,0],[0,0,0,0]]),
+                           sc_pos = np.array([[0,0,0],[0,0,0]]),
+                           time=[0,10],
+                           trigtime=5)
+    drmgen = DRMGen(pos, det_number=0, ebin_edge_in=Ein_edges, ebin_edge_out=Eout_edges, mat_type=0, occult=False,time=5)
+    drmgen.set_location_direct_sat_coord(az=0, el=0)
+    mat = drmgen.matrix
+    DRM_Mn = mat[:,834]
+    DRM_Mn_a = minimize(amplitude_fitter, 1000, (GBM_Mn[2:], DRM_Mn)).x[0]
+
+    DRM_Na = mat[:,510]
+    DRM_Na_a = minimize(amplitude_fitter, 1000, (GBM_Na[2:], DRM_Na)).x[0]
+
+
     
     Mn_plot = fig.add_subplot(grid[0,0])
     
-    w = (GBM_x1[-1]-GBM_x1[0])/(len(GBM_x1)-3)
-    plt.bar(GBM_x1, GBM_Mn, width = w, label="GBM Data")
+    plt.step(GBM_x1, GBM_Mn, label="GBM Test Data")
     # plt.plot(Mn_x, Mn_y*Mn_a1,color="C1",label="Analytical Computation")
-    plt.plot(Mn_x2, Mn_y2*Mn_a2,color="C2",label="Analytical Computation: Adjusted Uncertainty")
+    plt.step(GBM_x1[2:],DRM_Mn*DRM_Mn_a,label="GBM DRM")
+    plt.plot(Mn_x2, Mn_y2*Mn_a2,color="C2",label="Analytical Computation: Adjusted Uncertainty",lw=2)
     plt.title("Mn 54 Source")
     
     plt.legend()
@@ -934,12 +953,12 @@ def GBM_data():
     
     Na_plot = fig.add_subplot(grid[1,0])
     
-    w = (GBM_x2[-1]-GBM_x2[0])/(len(GBM_x2)-3)
-    plt.bar(GBM_x2, GBM_Na, width = w, label="GBM Data")
+    plt.step(GBM_x2, GBM_Na, label="GBM Test Data")
     # plt.plot(Na_x, Na_y*Na_a1,color="C1",label="Analytical Computation")
-    plt.plot(Na_x2, Na_y2*Na_a2,color="C2",label="Analytical Computation: Adjusted Uncertainty")
+    plt.step(GBM_x1[2:],DRM_Na*DRM_Na_a,label="GBM DRM")
+    plt.plot(Na_x2, Na_y2*Na_a2,color="C2",label="Analytical Computation: Adjusted Uncertainty",lw=2)
     plt.title("Na 22 Source")
-    
+
     #plt.legend()
     
     
@@ -1008,7 +1027,7 @@ def GBM_data2():
     Mn_plot = fig.add_subplot(grid[0,0])
     
     w = (GBM_x1[-1]-GBM_x1[0])/(len(GBM_x1)-3)
-    plt.bar(GBM_x1, GBM_Mn, width = w, label="GBM Data")
+    plt.bar(GBM_x1, GBM_Mn, width = w, label="GBM Test Data")
     # plt.plot(Mn_x, Mn_y*Mn_a1,color="C1",label="Analytical Computation")
     plt.plot(GBM_x1, Mn_y1_a*Mn_a[0] + Mn_y2_a*Mn_a[1], color="C1", label="Analytical Computation: Adjusted Uncertainty")
     Mn_plot.set_ylabel("O={:.2f}, R180={:.2f}".format(Mn_a[0]/np.sum(Mn_a), Mn_a[1]/np.sum(Mn_a)))
@@ -1021,7 +1040,7 @@ def GBM_data2():
     Na_plot = fig.add_subplot(grid[1,0])
     
     w = (GBM_x2[-1]-GBM_x2[0])/(len(GBM_x2)-3)
-    plt.bar(GBM_x2, GBM_Na, width = w, label="GBM Data")
+    plt.bar(GBM_x2, GBM_Na, width = w, label="GBM Test Data")
     # plt.plot(Na_x, Na_y*Na_a1,color="C1",label="Analytical Computation")
     plt.plot(GBM_x2, Na_y1_a*Na_a[0] + Na_y2_a*Na_a[1], color="C1",label="Analytical Computation: Adjusted Uncertainty")
     Na_plot.set_ylabel("O={:.2f}, R180={:.2f}".format(Na_a[0]/np.sum(Na_a), Na_a[1]/np.sum(Na_a)))

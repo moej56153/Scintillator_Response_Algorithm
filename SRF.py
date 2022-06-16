@@ -1026,8 +1026,7 @@ def GBM_data2():
     
     Mn_plot = fig.add_subplot(grid[0,0])
     
-    w = (GBM_x1[-1]-GBM_x1[0])/(len(GBM_x1)-3)
-    plt.bar(GBM_x1, GBM_Mn, width = w, label="GBM Test Data")
+    plt.step(GBM_x1, GBM_Mn, label="GBM Test Data")
     # plt.plot(Mn_x, Mn_y*Mn_a1,color="C1",label="Analytical Computation")
     plt.plot(GBM_x1, Mn_y1_a*Mn_a[0] + Mn_y2_a*Mn_a[1], color="C1", label="Analytical Computation: Adjusted Uncertainty")
     Mn_plot.set_ylabel("O={:.2f}, R180={:.2f}".format(Mn_a[0]/np.sum(Mn_a), Mn_a[1]/np.sum(Mn_a)))
@@ -1039,8 +1038,7 @@ def GBM_data2():
     
     Na_plot = fig.add_subplot(grid[1,0])
     
-    w = (GBM_x2[-1]-GBM_x2[0])/(len(GBM_x2)-3)
-    plt.bar(GBM_x2, GBM_Na, width = w, label="GBM Test Data")
+    plt.step(GBM_x2, GBM_Na, label="GBM Test Data")
     # plt.plot(Na_x, Na_y*Na_a1,color="C1",label="Analytical Computation")
     plt.plot(GBM_x2, Na_y1_a*Na_a[0] + Na_y2_a*Na_a[1], color="C1",label="Analytical Computation: Adjusted Uncertainty")
     Na_plot.set_ylabel("O={:.2f}, R180={:.2f}".format(Na_a[0]/np.sum(Na_a), Na_a[1]/np.sum(Na_a)))
@@ -1050,4 +1048,4 @@ def GBM_data2():
     #plt.legend()
     
     
-    #plt.savefig('SRF_GBM_Data2.pdf',bbox_inches='tight')
+    plt.savefig('SRF_GBM_Data2.pdf',bbox_inches='tight')

@@ -930,7 +930,7 @@ def GBM_data():
                            time=[0,10],
                            trigtime=5)
     drmgen = DRMGen(pos, det_number=0, ebin_edge_in=Ein_edges, ebin_edge_out=Eout_edges, mat_type=0, occult=False,time=5)
-    drmgen.set_location_direct_sat_coord(az=0, el=0)
+    drmgen.set_location_direct_sat_coord(az=45.9, el=90-20.58)
     mat = drmgen.matrix
     DRM_Mn = mat[:,834]
     DRM_Mn_a = minimize(amplitude_fitter, 1000, (GBM_Mn[2:], DRM_Mn)).x[0]
